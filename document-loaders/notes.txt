@@ -1,0 +1,43 @@
+Covariation and correlation are closely related ideas in statistics, but they are not the same thing. Correlation is actually derived from covariation.
+1️⃣ Covariation (Covariance)
+Covariation (covariance) measures how two variables change together.
+Key ideas
+If X increases and Y increases together → positive covariance
+If X increases and Y decreases → negative covariance
+If changes are unrelated → covariance near 0
+Example
+Study Hours	Marks
+2	50
+4	60
+6	70
+As study hours increase, marks increase → positive covariance.
+Limitations
+Value depends on units of measurement
+Hard to interpret directly (could be 200, 5000, etc.)
+2️⃣ Correlation
+Correlation is the standardized version of covariance.
+It tells how strong the relationship is between variables.
+Range
+Correlation always lies between:
+-1  ≤  r  ≤  1
+Interpretation
+Correlation	Meaning
++1	Perfect positive relationship
+0	No relationship
+-1	Perfect negative relationship
+Example:
+Height vs weight → positive correlation
+Speed vs travel time → negative correlation
+🔑 Main Differences
+Feature	Covariation (Covariance)	Correlation
+Meaning	Measures how variables vary together	Measures strength of relationship
+Range	−∞ to +∞	−1 to +1
+Units	Depends on units	Unitless
+Interpretation	Harder	Easy
+Formula	Mean product of deviations	Covariance normalized
+✅ Simple intuition
+Covariance → Direction of relationship
+Correlation → Direction + Strength
+✔️ Quick memory trick:
+Covariance = raw relationship
+Correlation = normalized relationship
