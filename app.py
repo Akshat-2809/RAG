@@ -2,6 +2,7 @@ import streamlit as st
 from dotenv import load_dotenv
 import tempfile
 import os
+import shutil
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -697,6 +698,10 @@ if uploaded_file:
 
     if st.button("⚡  Build Knowledge Index"):
         with st.spinner("Embedding document chunks into vector space…"):
+            # Delete old DB so previous PDF data doesn't mix with the new one
+            if os.path.exists("chroma_db"):
+                shutil.rmtree("chroma_db")
+
             loader = PyPDFLoader(file_path)
             docs   = loader.load()
             chunks = RecursiveCharacterTextSplitter(
