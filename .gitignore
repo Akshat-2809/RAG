@@ -1,3 +1,9 @@
 .venv
 .env
 __pycache__/
+
+chroma_db/
+chroma-db1/
+chroma-db2/
+.DS_Store
+.claude/

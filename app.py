@@ -3,12 +3,21 @@ from dotenv import load_dotenv
 import tempfile
 import os
 import shutil
+import uuid
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
-from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
+from langchain_groq import ChatGroq
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
+
+EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+# App dir is read-only on Streamlit Cloud, so the vector store goes under the
+# system temp dir. Each index build gets its own fresh sub-directory (path kept
+# in st.session_state) — we never delete/recreate one fixed path, which avoids
+# stale chromadb file handles pointing at a removed directory.
+CHROMA_ROOT = os.path.join(tempfile.gettempdir(), "rag_chroma")
 
 load_dotenv()
 
@@ -698,33 +707,38 @@ if uploaded_file:
 
     if st.button("⚡  Build Knowledge Index"):
         with st.spinner("Embedding document chunks into vector space…"):
-            # Delete old DB so previous PDF data doesn't mix with the new one
-            if os.path.exists("chroma_db"):
-                shutil.rmtree("chroma_db")
+            # Best-effort cleanup of any previous build's directory.
+            old_dir = st.session_state.get("chroma_dir")
+            if old_dir and os.path.exists(old_dir):
+                shutil.rmtree(old_dir, ignore_errors=True)
+
+            chroma_dir = os.path.join(CHROMA_ROOT, uuid.uuid4().hex)
+            os.makedirs(chroma_dir, exist_ok=True)
 
             loader = PyPDFLoader(file_path)
             docs   = loader.load()
             chunks = RecursiveCharacterTextSplitter(
                 chunk_size=1000, chunk_overlap=200
             ).split_documents(docs)
-            embeds = MistralAIEmbeddings(model="mistral-embed")
-            vs     = Chroma.from_documents(
-                documents=chunks, embedding=embeds, persist_directory="chroma_db"
+            embeds = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+            Chroma.from_documents(
+                documents=chunks, embedding=embeds, persist_directory=chroma_dir
             )
-            vs.persist()
+            st.session_state["chroma_dir"] = chroma_dir
         st.success(f"✓ Indexed {len(chunks)} chunks across {len(docs)} pages")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Q&A Section ───────────────────────────────────────────────────────────────
-if os.path.exists("chroma_db"):
-    embeds      = MistralAIEmbeddings(model="mistral-embed")
-    vectorstore = Chroma(persist_directory="chroma_db", embedding_function=embeds)
+CHROMA_DIR = st.session_state.get("chroma_dir")
+if CHROMA_DIR and os.path.exists(CHROMA_DIR):
+    embeds      = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+    vectorstore = Chroma(persist_directory=CHROMA_DIR, embedding_function=embeds)
     retriever   = vectorstore.as_retriever(
         search_type="mmr",
         search_kwargs={"k": 4, "fetch_k": 10, "lambda_mult": 0.5}
     )
-    llm    = ChatMistralAI(model="mistral-small-2506")
+    llm    = ChatGroq(model="openai/gpt-oss-120b", max_retries=8, timeout=60)
     prompt = ChatPromptTemplate.from_messages([
         ("system",
          "You are a precise, helpful AI assistant.\n"
@@ -748,11 +762,20 @@ if os.path.exists("chroma_db"):
     st.markdown("</div>", unsafe_allow_html=True)
 
     if query:
-        with st.spinner("Searching document & generating answer…"):
-            retrieved_docs = retriever.invoke(query)
-            context        = "\n\n".join([d.page_content for d in retrieved_docs])
-            final_prompt   = prompt.invoke({"context": context, "question": query})
-            response       = llm.invoke(final_prompt)
+        try:
+            with st.spinner("Searching document & generating answer…"):
+                retrieved_docs = retriever.invoke(query)
+                context        = "\n\n".join([d.page_content for d in retrieved_docs])
+                final_prompt   = prompt.invoke({"context": context, "question": query})
+                response       = llm.invoke(final_prompt)
+        except Exception as e:
+            if "rate_limit" in str(e).lower() or "429" in str(e):
+                st.warning(
+                    "Model provider rate limit hit. Wait a few seconds and try again."
+                )
+            else:
+                st.error(f"Request failed: {e}")
+            st.stop()
 
         st.markdown(f"""
         <div class="answer-card">
